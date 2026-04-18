@@ -137,11 +137,7 @@ class LFramework(nn.Module):
                 stdout_msg += ' entropy = {}'.format(np.mean(entropies))
             if critic_loss:
                 stdout_msg += ' critic_loss = {}'.format(np.mean(critic_loss))
-            if sim_rates:
-                stdout_msg += ' sim_rates = {}'.format(np.mean(sim_rates))
 
-            if hit_rates:
-                stdout_msg += ' hit_rates = {}'.format(np.mean(hit_rates))
             print(stdout_msg)
             self.save_checkpoint(checkpoint_id=epoch_id, epoch_id=epoch_id)
             if self.run_analysis:
