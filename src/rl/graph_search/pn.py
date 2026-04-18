@@ -45,7 +45,6 @@ class GraphSearchPolicy(nn.Module):
         self.fn_kg = fn_kg
 
     def transit(self, e, obs, ra, kg, use_action_space_bucketing=True, merge_aspace_batching_outcome=False):
-        # def transit(self, e, obs, kg, ref_e, bucket, ra, use_action_space_bucketing=True, merge_aspace_batching_outcome=False):
         """
         Compute the next action distribution based on
             (a) the current node (entity) in KG and the query relation
@@ -92,18 +91,6 @@ class GraphSearchPolicy(nn.Module):
         else:
             X = torch.cat([E, H, Q], dim=-1)
 
-        # # #
-        # G = []
-        # for action_space_b, reference_b in zip(db_action_spaces, db_references):
-        #     (r_space, e_space), action_mask = action_space_b
-        #     A = self.get_action_embedding((r_space, e_space), kg)
-        #     X_b = self.W_att2(X[reference_b, :]).unsqueeze(-1)
-        #     alpha = torch.softmax(F.leaky_relu(torch.matmul(A, X_b)), 1)
-        #     local_knowledge = torch.matmul(alpha.transpose(1, 2), A).squeeze(1)
-        #     G.append(local_knowledge)
-        # G = torch.cat(G, dim=0)[inv_offset]
-        #
-        # X = torch.cat([X, H, G], -1)
         # MLP
         X = self.W1(X)
         X = F.relu(X)
@@ -111,122 +98,24 @@ class GraphSearchPolicy(nn.Module):
         X = self.W2(X)
         X2 = self.W2Dropout(X)
 
-        # all_relations_embeddings = kg.get_all_relation_embeddings()
         entities_probs = ra.critic.pred_entity(e_s, q, e, kg).detach()
-        # entities_probs = F.sigmoid(all_entity_emb)
-        # entities_probs = F.softmax(all_entity_emb)
-        # pred_id = torch.multinomial(all_entity_emb, 1)
-        # _, pred_id = torch.topk(entities_probs, 1, dim=-1)
-        # pred_emb = kg.get_entity_embeddings(pred_id.squeeze(-1))
-        # pred_emb = kg.get_entity_embeddings(pred_id)
-        # rel_select_num = torch.sum(entities_probs > 0.95, -1)
-        # TODO: 尝试拿到5个到10个的实体然后取嵌入均值。结果不太行，过多的信息导致噪声的增加
-        # pred_id = torch.multinomial(entities_probs, 6).view(X2.size(0) * 6)
         pred_id = torch.multinomial(entities_probs, 1)
-        # _, pred_id = torch.topk(entities_probs, 6, dim=-1)
-        # pred_emb = kg.get_entity_embeddings(pred_id).sum(1)
         pred_emb = kg.get_entity_embeddings(pred_id)
 
-        # pred_ent_info = self.W3(torch.cat([X2.unsqueeze(1).repeat_interleave(1, 1), pred_emb], -1))
         pred_ent_info = self.W3(pred_emb)
-
-        # pred_ent_info = self.W4(S_E)
         relation_K = self.W4(kg.get_all_relation_embeddings())
-        # relation_V = self.W5(kg.get_all_relation_embeddings())
 
         local_att = torch.matmul(pred_ent_info, relation_K.t())
 
         beta = torch.matmul(F.softmax(local_att, dim=-1), kg.get_all_relation_embeddings()).sum(1)
-        # alpha = torch.bmm(F.softmax(local_att.permute(0, 2, 1), dim=-1), pred_emb).sum(1)
         alpha = self.W5(torch.cat([kg.get_all_relation_embeddings().unsqueeze(0).expand(pred_emb.size(0), -1, -1),
                                  pred_emb.expand(-1, kg.num_relations, -1)], -1).sum(1))
-        # # local_att = F.softmax(torch.matmul(rel_info, kg.get_all_relation_embeddings().t()), -1) # 这里权重大小都差不多，感觉像是算不出来区别？
-        # # local_rel = torch.matmul(local_att.transpose(1, 2), torch.cat([X2.unsqueeze(1).repeat_interleave(6, 1), pred_emb], -1)).mean(1)
-        # local_rel = torch.matmul(local_att.transpose(1, 2), pred_emb).mean(1)
-        # local_rel = torch.matmul(local_att.unsqueeze(-1), pred_emb.unsqueeze(1)).mean(1)
-        # local_rel = torch.matmul(local_att, kg.get_all_relation_embeddings()).mean(1)    # 来到这里后，后续的计算使得所有状态都一样，感觉主要还是这里的问题？
-        # V_A = self.W5(torch.cat([X2.unsqueeze(1).repeat_interleave(1, 1), pred_emb, beta], -1)).sum(1)
+
         V_A = self.W6(torch.cat([alpha, beta], -1))
 
-        # gate = self.fusion_gate(torch.cat([X2, V_A], -1))
-        # # gate = self.fusion_gate(X2)
-        # X3 = X2 + gate * self.W7(V_A)
-
-        # 原本这个就可以被看作为硬注意力，相当于将隐藏状态进行随机选择
         relation_att = torch.matmul(self.W_att(torch.cat([X2, V_A], -1)), kg.get_all_relation_embeddings().t())
-        # relation_att = torch.matmul(self.W_att(X2), kg.get_all_relation_embeddings().t())
-        # relation_att = torch.matmul(self.W_att(torch.cat([X2.unsqueeze(1).repeat_interleave(3, 1), pred_emb], -1)), kg.get_all_relation_embeddings().t()).mean(1)
-        # B x |R|
-        # Trick -> mask SIM relation
         relation_att = F.softmax(relation_att, dim=-1)
-        # if last_step:
-        #     # print("relation_att : ", relation_att[:7, :50].shape)
-        #     relation_se = []
-        #     entity_cur = []
-        #     tmp0 = relation_att
-        #     tmp_sum_0 = tmp0.sum(0)
-        #     _, index = torch.topk(tmp_sum_0, 200, -1)
-        #     # index = torch.tensor([113, 2, 259, 334, 379, 335, 380, 363, 187, 361, 69, 399, 107, 362, 97,  59,  91, 305, 303, 315])
-        #     new_harvest_0 = []
-        #     for item in index[:200]:
-        #         new_harvest_0.append(tmp0[:, item].cpu().data.numpy())
-        #         if len(relation_se) < 10:
-        #             if kg.id2relation[int(item)] in ['DUMMY_RELATION', 'START_RELATION', 'NO_OP_RELATION']:
-        #                 relation_se.append(kg.id2relation[int(item)])
-        #             else:
-        #                 relation_se.append(kg.id2relation[int(item)][8:])
-        #     # print("relations index : ", index)
-        #
-        #     new_harvest = []
-        #     tmp1 = torch.tensor(new_harvest_0)
-        #     # print("tmp1.shape : ", tmp1.shape)
-        #     tmp_sum_1 = tmp1.sum(0)
-        #     _, index = torch.topk(tmp_sum_1, 200, -1)
-        #     # index = torch. tensor([541, 2001,  165,  918,  263, 1761,  383, 1683, 2035,  137, 1384, 1046, 95,  531, 1152,  899, 1118,  178, 1497,  694])
-        #     for item in range(0, tmp1.shape[1], 20):
-        #     # for item in index[:200]:
-        #         if len(entity_cur) < 10:
-        #             new_harvest.append(tmp1[:, item].cpu().data.numpy())
-        #             if kg.id2entity[int(e[item])] in ['DUMMY_ENTITY', 'NO_OP_ENTITY']:
-        #                 entity_cur.append(kg.id2entity[int(e[item])])
-        #             else:
-        #                 entity_cur.append(kg.id2entity[int(e[item])][8:])
-        #     # print("entities index : ", e[index])
-        #
-        #     # vegetables = ["cucumber", "tomato", "lettuce", "asparagus", "potato", "wheat", "barley", "barley", "barley", "barley"]
-        #
-        #
-        #     # # 计算均值
-        #     # mean = torch.mean(torch.tensor(new_harvest), dim=1, keepdim=True)
-        #     # # 计算标准差
-        #     # std = torch.std(torch.tensor(new_harvest), dim=1, keepdim=True)
-        #     # # 归一化
-        #     # result = (torch.tensor(new_harvest) - mean) / std
-        #     print("new_harvest.shape : ", torch.tensor(new_harvest).shape)
-        #     new_harvest = torch.round(torch.tensor(new_harvest), decimals=2)
-        #     harvest = new_harvest.data.cpu().numpy()
-        #     plt.xticks(np.arange(10), labels=relation_se, rotation=45, rotation_mode="anchor", ha="right", fontsize=7)
-        #     plt.yticks(np.arange(10), labels=entity_cur, fontsize=7)
-        #     plt.title("No optimization in relations selection on NELL23k", fontsize=8)
-        #     for i in range(10):
-        #         for j in range(10):
-        #             # print('i ', i)
-        #             # print('j ', j)
-        #             # print('harvest[i][j] ', harvest[i][j])
-        #             text = plt.text(j, i, harvest[i, j], ha="center", va="center", color="black", fontsize=7)
-        #     plt.imshow(harvest[:10, :10], cmap='Blues', aspect='equal', alpha=0.8)
-        #     plt.tight_layout()
-        #     plt.colorbar()
-        #     plt.savefig('/data/weijinhui/KG/QSDR/test/test——ooooo.png', dpi=800, bbox_inches='tight')
-        #     # plt.show()
 
-        # entity_att = F.softmax(torch.matmul(rel_info, kg.get_all_entity_embeddings().t()), dim=-1)
-        # local_ent = torch.matmul(entity_att, kg.get_all_entity_embeddings())
-
-        # action_info = F.relu(self.W3(torch.cat([local_rel, local_ent], -1)))
-        # action_info = self.W4(action_info)
-
-        # X2 = self.W_att3(torch.cat([X2, local_rel], -1))
 
         def policy_nn_fun(X2, action_space):
             (r_space, e_space), action_mask = action_space
@@ -326,30 +215,11 @@ class GraphSearchPolicy(nn.Module):
         max_dynamic_action_size = 20
         dynamic_split_bound = 2
         avg_entity_per_relation = 5
-        # relation_limt = rel_select_num_b.max() + 1
-        # # 如果远远大于目前已有空间，那么已有空间存在的可能实体会较多，那么可以添加少一点
-        # # 如果小于，那么就需要大一点
-        # alpha = (ass / relation_limt)
 
-        additional_action_space_size = min(int(ass / dynamic_split_bound) + 1, max_dynamic_action_size)
-        # additional_action_space_size = min(int(alpha * ass) + 1, max_dynamic_action_size)
-        # additional_action_space_size = min(int(relation_limt), max_dynamic_action_size)
-        # additional_action_space_size = max_dynamic_action_size
-
-        # 大于1的话，表示有足够的覆盖率；而小于1代表覆盖率不够，较为稀疏。
-        # 覆盖率不够就只能加实体，而足够的覆盖率就加关系
-        # if alpha > 1:
-        #     additional_action_space_size = max_dynamic_action_size
-        #     avg_entity_per_relation = 1
-        # else:
-        #     additional_action_space_size = min(int(alpha * ass) + 1, max_dynamic_action_size)
-        #     avg_entity_per_relation = 5
         additional_action_space_size = 1
 
         additional_relation_size = int(additional_action_space_size / avg_entity_per_relation) + 1
 
-        # bks x additional_relation_size
-        # 在relation_att中抽取addtional_relation_size大小的关系
         relation_idx = torch.multinomial(relation_att, additional_relation_size)
         # bks x additional_relation_size x |E|
         # 让e_b在batch处重复additional_relation_size次，这里也是进行的对当前所处的实体以及关系进行的下一步预测，并改变预测结果的结构
@@ -578,37 +448,23 @@ class GraphSearchPolicy(nn.Module):
         else:
             input_dim = self.history_dim + self.entity_dim + self.relation_dim
         hidden_dim = 100
-        # self.W_b = nn.Linear(self.entity_dim, 100)
-        # self.W_nei = nn.Linear(self.entity_dim, self.action_dim)
+
         self.W1 = nn.Linear(input_dim, self.action_dim)
         self.W2 = nn.Linear(self.action_dim, self.action_dim)
-        # self.W3 = nn.Linear(self.action_dim + self.entity_dim, hidden_dim)
         self.W3 = nn.Linear(self.entity_dim, hidden_dim)
         self.W4 = nn.Linear(self.relation_dim, hidden_dim)
         self.W5 = nn.Linear(self.relation_dim + self.entity_dim, self.entity_dim)
         self.W6 = nn.Linear(self.relation_dim + self.entity_dim, self.entity_dim)
-        # self.W7 = nn.Linear(self.entity_dim, self.action_dim)
+
         self.W1Dropout = nn.Dropout(p=self.ff_dropout_rate)
         self.W2Dropout = nn.Dropout(p=self.ff_dropout_rate)
         self.W3Dropout = nn.Dropout(p=self.ff_dropout_rate)
         self.W4Dropout = nn.Dropout(p=self.ff_dropout_rate)
-        # self.W_Q = nn.Linear(self.entity_dim, self.entity_dim)
-        # self.W_K = nn.Linear(self.action_dim, self.entity_dim)
-        # self.W3 = nn.Linear(self.entity_dim, self.action_dim)
-        # self.W3Dropout = nn.Dropout(p=self.ff_dropout_rate)
-        # self.layer_norm_1 = nn.LayerNorm(self.action_dim)
+
         self.W_att = nn.Linear(self.action_dim + self.entity_dim, self.relation_dim)
-        # self.W_att = nn.Linear(self.action_dim, self.relation_dim)
         self.W_att2 = nn.Linear(self.action_dim + self.entity_dim, self.relation_dim)
         self.W_att3 = nn.Linear(self.action_dim + self.entity_dim, self.action_dim)
 
-        # # 融合门控机制
-        # self.fusion_gate = nn.Sequential(
-        #     nn.Linear(self.action_dim + self.entity_dim, self.action_dim),
-        #     nn.ReLU(),
-        #     nn.Linear( self.action_dim,  self.action_dim),
-        #     nn.Sigmoid()
-        # )
 
         if self.relation_only_in_path:
             self.path_encoder = nn.LSTM(input_size=self.relation_dim,
