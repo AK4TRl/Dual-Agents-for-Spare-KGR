@@ -64,38 +64,16 @@ class Critic(nn.Module):
         self.relation_dim = relation_dim
         self.action_dim = self.entity_dim + self.relation_dim
 
-    #     self.W = nn.Linear(self.action_dim + self.entity_dim, self.entity_dim)
-    #
-    # def pred_relation(self, e_s, r_q, e_b, kg):
-    #
-    #     S = self.W(torch.cat([e_s, r_q, e_b], -1))
-    #     relation_att = torch.matmul(S, kg.get_all_relation_embeddings().t())
-    #     relation_att = torch.nn.functional.softmax(relation_att, -1)
-    #
-    #     # bks x additional_relation_size
-    #     relation_idx = torch.multinomial(relation_att, 1).squeeze(-1)
-    #
-    #     return relation_idx
 
-    def pred_entity(self, e_s, q_s, e_c, kg): # , PAIRS, entity_embedding, relation_embedding):
-        # e1 = self.entity_embeddings(e_t).unsqueeze(1).expand(-1, 2 * PAIRS, -1).reshape(-1, 1, 1, self.entity_dim)
-        # r = self.relation_embeddings(q_s).unsqueeze(1).expand(-1, 2 * PAIRS, -1)
-        # N, C, H, W -> batch_size, features_nums（输入图像的通道数量？）, height, width
-        # e1 = self.entity_embeddings(e_t).unsqueeze(1).expand(-1, PAIRS, -1).reshape(-1, 1, 1, self.entity_embeddings.weight.size(1))
-        # e1 = self.entity_embeddings(e_t).view(-1, 1, 1, self.entity_embeddings.weight.size(1))
-        # r = self.relation_embeddings(q_s).unsqueeze(1).expand(-1, PAIRS, -1).reshape(-1, 1, 1, self.relation_embeddings.weight.size(1))
+    def pred_entity(self, e_s, q_s, e_c, kg): 
         e_s = kg.get_entity_embeddings(e_s)
         e_c = kg.get_entity_embeddings(e_c)
         r = kg.get_relation_embeddings(q_s)
 
         e_c = self.W1(torch.cat([e_s, e_c], -1))
-        # r = self.W1(r)
         e1 = e_c.view(-1, 1, 1, kg.entity_embeddings.weight.size(1))
-        # r2 = kg.get_all_relation_embeddings()
         e2 = kg.get_all_entity_embeddings()
 
-        # stacked_inputs = torch.cat([entity_embedding, relation_embedding], 2)
-        # r = self.relation_embeddings(q[reference_b]).unsqueeze(1).expand(-1, PAIR_SIZE, -1)
         x = self.bn0(e1)
         x = self.inp_drop(x)
 
@@ -120,41 +98,20 @@ class Critic(nn.Module):
         x = F.relu(x)
         all_entity_prob = torch.mm(x, e2.transpose(1, 0))
         all_entity_prob += self.b.expand_as(all_entity_prob)
-
-        # pred = F.sigmoid(all_entity_prob)
-        # a = torch.multinomial(pred, 1)
-        # pred_kg = self.entity_embeddings(a.view(e_t.shape[0], -1)).squeeze(1)
-        # pred_kg = self.entity_embeddings(a.view(e_t.shape[0], PAIRS, -1)).squeeze(2).sum(1)
-        # stacked_inputs = torch.cat([entity_embedding, relation_embedding], 2)
-        # x = x.view(-1, PAIRS, self.entity_dim + self.relation_dim)
-        # score = torch.matmul(x, stacked_inputs.transpose(-2, -1)).sum(-1)
-
-        # x += self.b.expand_as(x)
-        # pred = F.sigmoid(x)
-
-        # X = torch.matmul(X.unsqueeze(1), E2.unsqueeze(2)).squeeze(2)
-        # X += self.b[e2].unsqueeze(1)
-        # 这里计算的是那么多个batch中所有实体的概率
         S = torch.sigmoid(all_entity_prob)
 
         return S
 
 
-    def forward_fact(self, e_s, q_s, e_c, e_2, kg):# , PAIRS, entity_embedding, relation_embedding):
-        # e1 = self.entity_embeddings(e_t).unsqueeze(1).expand(-1, 2 * PAIRS, -1).reshape(-1, 1, 1, self.entity_dim)
-        # r = self.relation_embeddings(q_s).unsqueeze(1).expand(-1, 2 * PAIRS, -1)
-        # e1 = self.entity_embeddings(e_t).view(-1, 1, 1, self.entity_embeddings.weight.size(1))
+    def forward_fact(self, e_s, q_s, e_c, e_2, kg):
         e_s = kg.get_entity_embeddings(e_s)
         e_c = kg.get_entity_embeddings(e_c)
         r = kg.get_relation_embeddings(q_s)
 
         e_c = self.W1(torch.cat([e_s, e_c], -1))
-        # r = self.W1(r)
         e1 = e_c.view(-1, 1, 1, kg.entity_embeddings.weight.size(1))
         e2 = kg.get_entity_embeddings(e_2)
 
-        # stacked_inputs = torch.cat([entity_embedding, relation_embedding], 2)
-        # r = self.relation_embeddings(q[reference_b]).unsqueeze(1).expand(-1, PAIR_SIZE, -1)
         x = self.bn0(e1)
         x = self.inp_drop(x)
 
@@ -181,18 +138,6 @@ class Critic(nn.Module):
         S = torch.sigmoid(x)
         # S = torch.tanh(x)
 
-        # stacked_inputs = torch.cat([entity_embedding, relation_embedding], 2)
-        # x = x.view(-1, PAIRS, self.entity_dim + self.relation_dim)
-        # score = torch.matmul(x, stacked_inputs.transpose(-2, -1)).sum(-1)
-
-        # x += self.b.expand_as(x)
-        # pred = F.sigmoid(x)
-
-        # X = torch.matmul(X.unsqueeze(1), E2.unsqueeze(2)).squeeze(2)
-        # X += self.b[e2].unsqueeze(1)
-        # 这里计算的是那么多个batch中所有实体的概率
-        # S = torch.sigmoid(X)
-
         return S
 
 class Actor(nn.Module):
@@ -205,24 +150,12 @@ class Actor(nn.Module):
         self.history_dim = history_dim
         self.action_dropout_rate = action_dropout_rate
 
-        # self.W_Q = nn.Linear(self.action_dim, self.relation_dim)
-        # self.W_K = nn.Linear(self.action_dim, self.relation_dim)
-        # self.W_V = nn.Linear(self.action_dim, self.relation_dim)
-        # self.W_X2 = nn.Linear(self.action_dim, self.action_dim)
-        # self.WX2Dropout = nn.Dropout(p=self.ff_dropout_rate)
-        # self.layer_norm = nn.LayerNorm(self.action_dim)
-
         self.W1 = nn.Linear(self.action_dim + self.history_dim, self.action_dim)
         # self.W1 = nn.Linear(self.action_dim, self.action_dim)
         self.W2 = nn.Linear(self.action_dim, self.action_dim)
         self.W1Dropout = nn.Dropout(p=self.ff_dropout_rate)
         self.W2Dropout = nn.Dropout(p=self.ff_dropout_rate)
         self.W_att = nn.Linear(self.action_dim, self.entity_dim)
-
-        # self.path_encoder = nn.LSTM(input_size=self.action_dim,
-        #                             hidden_size=self.history_dim,
-        #                             num_layers=3,
-        #                             batch_first=True)
 
         self.path = None
 
@@ -290,42 +223,22 @@ class Actor(nn.Module):
 
     def RA_transit(self, action_space, X2, kg):
         ((r_space, e_space), action_mask) = action_space
-
         ri = kg.get_relation_embeddings(r_space)
         ei = kg.get_entity_embeddings(e_space)
-
         A = torch.cat([ri, ei], -1)
         dist = A @ torch.unsqueeze(X2, 2)
-
         action_dist = F.softmax(dist.squeeze(-1) - (1 - action_mask) * ops.HUGE_INT, dim=-1)
-
-        # # 随机抽一个作为在新实体空间内的实体
-        # pred_idx = torch.multinomial(action_dist, 1, replacement=True)
-        # next_e_b = ops.batch_lookup(e_space, pred_idx)
-        # next_r_b = ops.batch_lookup(r_space, pred_idx)
-        # action_prob = ops.batch_lookup(action_dist, pred_idx)
-
         return action_dist, ops.entropy(action_dist)
 
-    # def select_rel(self, e_t, r_q, pred_emb, H, kg):
     def select_action(self, e_t, H, r_q, REAL_E, kg, bucket, merge_aspace_batching_outcome):
-
         db_action_spaces, db_references = bucket
-        # X = torch.cat([r_q, e_t, pred_emb, H], -1)
         X = torch.cat([e_t, H, r_q], -1)
-        # X = torch.cat([r_q, e_t], -1)
-
         # MLP
         X = self.W1(X)
         X = F.relu(X)
         X = self.W1Dropout(X)
         X = self.W2(X)
         X2 = self.W2Dropout(X)
-
-        # relation_att = torch.matmul(self.W_att(X2), kg.get_all_relation_embeddings().t())
-        # # B x |R|
-        # # Trick -> mask SIM relation
-        # relation_att = F.softmax(relation_att, dim=-1)
 
         def pad_and_cat_action_space(action_spaces, inv_offset):
             db_r_space, db_e_space, db_action_mask = [], [], []
@@ -342,8 +255,6 @@ class Actor(nn.Module):
         references = []
         db_outcomes = []
         entropy_list = []
-        # db_action_spaces, db_references, next_r, next_e, refer_e, episode_log_probabilities, episode_entropies =\
-        # db_action_spaces, db_references = self.get_action_space_in_buckets(e, obs, kg, relation_att=relation_att)
         for action_space_b, reference_b in zip(db_action_spaces, db_references):
             X2_b = X2[reference_b, :]
             action_dist_b, entropy_b = self.RA_transit(action_space_b, X2_b, kg)
@@ -454,74 +365,19 @@ class Representive_Agent(object):
     def _critic_learn(self, RA_state, MA_state, log_space_probs, ra_entropy, kg):
 
         ops.detach_module(kg)
-        # next_H, next_E, next_Q = next_states
-        # state = [e_s, q, e, e_t, action[1], last_e]
-        # e_s, q, e, e_t, action = states
-        # e_s, q, e, e_t, last_e = states
         MA_reward, action, MA_done = MA_state
         e_s, q, e, e_t, last_e, RA_reward, RA_next_e, RA_done = RA_state
         real_rel, real_ent = action
-        # pred_e = next_eneity
-
-        # cur_state = [kg.get_entity_embeddings(e_s), kg.get_relation_embeddings(q), kg.get_entity_embeddings(e)]
-        # next_state = [kg.get_entity_embeddings(e_s), kg.get_relation_embeddings(q), kg.get_entity_embeddings(real_e)]
-
-        # next_obs = torch.cat([next_H, next_E, next_Q], -1).detach()
-        # obs = torch.cat([H, E, Q], -1).detach()
-        # next_e = self.perceive(real_e, obs, kg, update=True)
-
-        # RA_value = self.fact_score(e_s, q, e, RA_next_e, kg)
-        # MA_value = self.fact_score(e_s, q, e, real_ent, kg)
         current_q = self.fact_score(e_s, q, last_e, e, kg)
-        ## ver1
         gamma = 1.0
         with torch.no_grad():
-            # min_target = torch.min(self.fact_score(real_e, q, e_t, kg), self.fact_score(pred_e, q, e_t, kg))
-            # ex_target = self.fact_score(e_s, q, RA_next_e, real_ent, kg)
             RA_value = self.fact_score(e_s, q, e, RA_next_e, kg)
             MA_value = self.fact_score(e_s, q, e, real_ent, kg)     # 目标target，相当于next state和next action
-            # pos_target = (-MA_reward) + gamma * self.fact_score(e_s, q, e, real_ent, kg) * (1 - MA_done)
             RA_target = (RA_reward + gamma * RA_value) / 2 # * (1 - RA_done)
             MA_target = (MA_reward + gamma * MA_value) / 2 # * (1 - MA_done)
-            # td_target = RA_reward + gamma * MA_value * (1 - RA_done)
-            # td_target = (RA_target + MA_target) / 2
-            # td_delta = (MA_target - self.fact_score(e_s, q, last_e, e, kg)) + (td_target - self.fact_score(e_s, q, e, RA_next_e, kg))
-            # td_delta = td_target - RA_value
-            # td_delta = ((RA_target - current_q) + (MA_reward - RA_reward)) / 2
-            # td_delta = MA_target - current_q
             td_delta = RA_target - current_q
-            # td_delta = RA_target - RA_value
-            # td_delta = (RA_target + MA_target) / 2 - current_q
-            # td_delta = torch.tensor(0.2) * RA_target + torch.tensor(0.8) * MA_target
-            # td_delta = td_target - self.fact_score(e_s, q, last_e, e, kg)
 
-        # critic_loss = torch.mean(F.mse_loss(current_q, MA_target) + F.mse_loss(current_q, td_target))
-        # critic_loss = torch.mean(F.mse_loss(self.fact_score(e_s, q, last_e, e, kg), MA_target) +
-        #                          F.mse_loss(self.fact_score(e_s, q, last_e, e, kg), td_target))
-        # critic_loss = torch.mean(F.mse_loss(self.fact_score(e_s, q, e, RA_next_e, kg), td_target) +
-        #                          F.mse_loss(self.fact_score(e_s, q, last_e, e, kg), pos_target))
-        #                          # F.mse_loss(self.fact_score(e_s, q, last_e, e, kg), RA_target))
-        # critic_loss = F.mse_loss(self.fact_score(e_s, q, last_e, e, kg), td_target)
-        # critic_loss = F.mse_loss(self.fact_score(e_s, q, e, RA_next_e, kg), MA_value) + F.mse_lo ss(current_q, td_target)
         critic_loss = (F.mse_loss(current_q, RA_target) + F.mse_loss(current_q, MA_target)) / 2
-        # critic_loss = (F.mse_loss(RA_value, RA_target) + F.mse_loss(MA_value, MA_target)) / 2
-        # critic_loss = F.mse_loss(current_q, RA_target)
-        # critic_loss = F.mse_loss(current_q, MA_target) + F.mse_loss(RA_value, MA_target)
-        # critic_loss = F.mse_loss(current_q, MA_target)
-        # critic_loss = F.mse_loss(current_q, RA_target) + F.mse_loss(RA_value, td_target)
-        # critic_loss = F.mse_loss(current_q, td_target) + F.mse_loss(self.fact_score(e_s, q, e, RA_next_e, kg), MA_value)
-        # loss = critic_loss + PB_loss
-
-        # td_target = rewards + 0.1 * self.critic(next_states) * (1 - dones)
-        # td_delta = td_target - self.critic(states)q
-        #
-        # actor_loss = torch.mean(-log_space_probs * td_delta.detach())
-        # # critic_loss = torch.mean(F.mse_loss(self.fact_score(e, q, pred_e, kg), td_target.detach()))
-        # critic_loss = torch.mean(F.smooth_l1_loss(self.critic(states), td_target.detach()))
-
-        # mc_loss = (current_q - MA_target) ** 2
-        # td_loss = (current_q - RA_target) ** 2
-        # critic_loss = 0.5 * mc_loss.mean() + 0.5 * td_loss.mean()
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
@@ -538,7 +394,6 @@ class Representive_Agent(object):
         return torch.mean(critic_loss)
 
     def perceive(self, e, H, refer_e, obs, kg, bucket, merge_aspace_batching_outcome=False):
-    # def perceive(self, e, obs, kg, merge_aspace_batching_outcome=False):
         '''
             params:
             e: current entity
@@ -548,76 +403,14 @@ class Representive_Agent(object):
 
         e_s, q, e_t, last_step, last_r, seen_nodes = obs
         db_action_spaces, db_references = bucket
-
         e_cur = kg.get_entity_embeddings(e)
         q_r = kg.get_relation_embeddings(q)
         REAL_E = kg.get_entity_embeddings(refer_e)
-
-        # H = self.actor.path[-1][0][-1, :, :]
-
-        # X2, relation_att = self.actor.select_rel(e_cur, q_r, REAL_E, H, kg)
-        # X2, relation_att = self.actor.select_rel(e_cur, q_r, H, kg)
-
         ra_action_prob, ra_next_e, db_outcomes, entropy = self.actor.select_action(e_cur, H, q_r, REAL_E, kg, bucket, merge_aspace_batching_outcome)
 
         ops.activate_module(kg)
-        # refer_e = pred_id
-        # next_e = action[1]
 
-        # return db_outcomes, [db_action_spaces, db_references, inv_offset], entropy
         return ra_action_prob, ra_next_e, db_outcomes, entropy
-
-    # def get_dynamic_action_space(self, e_space, r_space, action_mask, e_b, relation_att, kg):
-    #     # bks -> bucket_size, ass -> action_space_size
-    #
-    #     max_dynamic_action_size = 20
-    #     dynamic_split_bound = 2
-    #     avg_entity_per_relation = 5
-    #
-    #     (bks, ass) = e_space.shape
-    #     additional_action_space_size = min(int(ass / dynamic_split_bound) + 1, max_dynamic_action_size)
-    #     additional_relation_size = int(additional_action_space_size / avg_entity_per_relation) + 1
-    #     # bks x additional_relation_size
-    #     # 在relation_att中抽取addtional_relation_size大小的关系
-    #     relation_idx = torch.multinomial(relation_att, additional_relation_size)
-    #     # bks x additional_relation_size x |E|
-    #     # 让e_b在batch处重复additional_relation_size次，这里也是进行的对当前所处的实体以及关系进行的下一步预测，并改变预测结果的结构
-    #     # 这个得到的是实体的概率
-    #     # 后续再根据S的概率大小选择前K个可能性更大的
-    #     S = self.fn.forward(e_b.repeat_interleave(additional_relation_size, dim=0), relation_idx.view(bks * additional_relation_size), self.fn_kg).view(bks, additional_relation_size, self.fn_kg.num_entities)
-    #
-    #     # idx -> bks x additional_relation_size x self.avg_entity_per_relation
-    #     # 选择得分前relation个作为新的预测关系
-    #     _, idx = torch.topk(S, avg_entity_per_relation, dim=-1)
-    #     # bks x (additional_relation_size * self.avg_entity_per_relation)
-    #     # 利用新的关系以及实体作为新的动作以及关系空间
-    #     new_r_space = relation_idx.repeat_interleave(avg_entity_per_relation, dim=1)
-    #     new_e_space = idx.view(bks, -1)
-    #     new_action_mask = torch.ones(bks, additional_relation_size * avg_entity_per_relation).cuda()
-    #     e_space = torch.cat([e_space, new_e_space], dim=-1)
-    #     r_space = torch.cat([r_space, new_r_space], dim=-1)
-    #     action_mask = torch.cat([action_mask, new_action_mask], dim=-1)
-    #     return e_space, r_space, action_mask
-
-    # def RA_transit(self, e_space, r_space, action_mask_b, e_s_b, e_b, q_b, kg):
-    # def RA_transit(self, action_space, X2, kg):
-    #     ((r_space, e_space), action_mask) = action_space
-    #
-    #     ri = kg.get_relation_embeddings(r_space)
-    #     ei = kg.get_entity_embeddings(e_space)
-    #
-    #     A = torch.cat([ri, ei], -1)
-    #     dist = A @ torch.unsqueeze(X2, 2)
-    #
-    #     action_dist = F.softmax(dist.squeeze(-1) - (1 - action_mask) * ops.HUGE_INT, dim=-1)
-    #
-    #     # # 随机抽一个作为在新实体空间内的实体
-    #     # pred_idx = torch.multinomial(action_dist, 1, replacement=True)
-    #     # next_e_b = ops.batch_lookup(e_space, pred_idx)
-    #     # next_r_b = ops.batch_lookup(r_space, pred_idx)
-    #     # action_prob = ops.batch_lookup(action_dist, pred_idx)
-    #
-    #     return action_dist, ops.entropy(action_dist)
 
     def get_action_space_in_buckets(self, e, obs, kg, collapse_entities=False, relation_att=None):
         """
@@ -700,24 +493,10 @@ class Representive_Agent(object):
                 action_space_b = ((r_space_b, e_space_b), action_mask_b)
                 action_space_b = self.apply_action_masks(action_space_b, e_b, obs_b, kg)
 
-                # episode_log_probabilities.append(space_prob_b)
-                # episode_entropies.append(space_entropy_b)
-                # refer_e.append(refer_e_b)
-                # next_r.append(next_r_b)
-                # # E_t.append(E_t_b)
-                # next_e.append(next_e_b)
-
                 db_action_spaces.append(action_space_b)
                 db_references.append(l_batch_refs)
 
-        # return db_action_spaces, db_references, next_r, next_e, refer_e, episode_log_probabilities, episode_entropies
         return db_action_spaces, db_references
-
-    # def get_action_space(self, e, obs, kg):
-    #     r_space, e_space = kg.action_space[0][0][e], kg.action_space[0][1][e]
-    #     action_mask = kg.action_space[1][e]
-    #     action_space = ((r_space, e_space), action_mask)
-    #     return self.apply_action_masks(action_space, e, obs, kg)
 
     def apply_action_masks(self, action_space, e, obs, kg):
         (r_space, e_space), action_mask = action_space
