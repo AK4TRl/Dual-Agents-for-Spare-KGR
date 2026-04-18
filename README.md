@@ -3,6 +3,6 @@
 This is the official code release of the paper. 
 
 
-<img src="https://github.com/AK4TRl/Dual-Agents-for-Spare-KGR/blob/main/pics/fig2.pdf" alt="multihopkg_architecture" width="700" class="center">
+<img src="./pics/dualagentskgr.png" alt="multihopkg_architecture" width="700" class="center">
 
 
