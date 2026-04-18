@@ -3,6 +3,6 @@
 This is the official code release of the paper. 
 
 
-<img src="pics/fig2.pdf" alt="multihopkg_architecture" width="700" class="center">
+<img src="./pics/fig2.pdf" alt="multihopkg_architecture" width="700" class="center">
 
 
