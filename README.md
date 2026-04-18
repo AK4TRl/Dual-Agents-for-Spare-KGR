@@ -3,6 +3,6 @@
 This is the official code release of the paper. 
 
 
-<img src="./pics/dualagentskgr.png" alt="multihopkg_architecture" width="900" class="center">
+<img src="./pics/dualagentskgr.png" alt="multihopkg_architecture" width="1000" class="center">
 
 
